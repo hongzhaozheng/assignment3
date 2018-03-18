@@ -1,0 +1,218 @@
+clear;
+clc;
+
+W=100;
+L=200;
+V0=0.1;
+so=1;
+si=10^-2;
+Wb=(2/5)*W;
+Lb=(2/5)*L;
+
+for i=1:W
+    for j=1:L
+        n = i+(j-1)*W;
+        if (j>Lb && j<(L-Lb)) && (i<Wb || i>(W-Wb))
+            sigma(i,j)=si;
+        else
+            sigma(i,j)=so;
+        end
+        sigmaV(n) = sigma(i,j);
+    end
+end
+
+G=sparse(W*L,W*L);
+
+%n:i,j
+%nl:i,j-1
+%nr:i,j+1
+for i=1:(W*L)
+    if i <= W || i > (L-1)*W
+        G(i,i)=1;
+    end
+end
+
+for j=2:(L-1)
+    for i=1:W
+        n = i+(j-1)*W;
+        a= i+(j-2)*W;
+        d= i+j*W;
+        w= (i-1)+(j-1)*W;
+        s= (i+1)+(j-1)*W;
+        
+        if i==1
+            G(n,s)=1/(1/sigma(n) + 1/sigma(s));
+            G(n,a)=1/(1/sigma(n) + 1/sigma(a));
+            G(n,d)=1/(1/sigma(n) + 1/sigma(d));
+            G(n,n)=-(G(n,s) + G(n,a) + G(n,d));
+        elseif i==W
+            G(n,w)=1/(1/sigma(n) + 1/sigma(w));
+            G(n,a)=1/(1/sigma(n) + 1/sigma(a));
+            G(n,d)=1/(1/sigma(n) + 1/sigma(d));
+            G(n,n)=-(G(n,w) + G(n,a) + G(n,d));
+        else
+            G(n,s)=1/(1/sigma(n) + 1/sigma(s));
+            G(n,w)=1/(1/sigma(n) + 1/sigma(w));
+            G(n,a)=1/(1/sigma(n) + 1/sigma(a));
+            G(n,d)=1/(1/sigma(n) + 1/sigma(d));
+            G(n,n)=-(G(n,w) + G(n,a) + G(n,d) + G(n,s));
+        end
+        
+    end
+end
+
+F=sparse(W*L,1);
+
+for i=1:(W*L)
+    if i <= W
+        F(i,1)=V0;
+    end
+end
+
+V=G\F;
+
+for i=1:W
+    for j=1:L
+        n=i+(j-1)*W;
+        Emap(i,j) = V(n);
+    end
+end
+figure(1);
+mesh(Emap);
+title('V(x,y)');
+
+[X Y]=gradient(Emap);
+
+Ex=-X;
+Ey=-Y;
+
+figure(2);
+quiver(Ex,Ey);
+title('E(x,y)');
+
+%Updated electric field with reduced dimension
+Ex=Ex*10^9;
+Ey=Ey*10^9;
+
+T = 300;
+m0=9.11*10^-31; %in kg
+W=1*10^-7;
+L=2*10^-7;
+mn=0.26*m0;
+q=1.6*10^-19;
+Fx=q*Ex;
+Fy=q*Ey;
+ax=Fx/mn;
+ay=Fy/mn;
+kB=1.38*10^-23;
+tmn=0.2*10^-12;
+vth=sqrt(2*kB*T/mn);%thermal velocity
+N=10; %number of particles
+deltaT=5*10^-15;
+tTotal=1000*deltaT;
+
+%Initial velocity 
+vx=zeros(1,N);
+vy=zeros(1,N);
+
+%Initial position of each particles
+xPos=zeros(1,N);
+yPos=zeros(1,N);
+
+%Initial delta position
+deltaPx=zeros(1,N);
+deltaPy=zeros(1,N);
+
+%Initial angle 
+theta=zeros(1,N);
+
+for i = 1:N
+    
+    x=rand*L;
+    y=rand*W;
+    while x>0.4*L && x<0.6*L &&(y<0.4*W||y>0.6*W)
+        x=rand*L;
+        y=rand*W;
+    end
+       
+    xPos(i)=xPos(i)+x;
+    yPos(i)=yPos(i)+y;
+    theta(i) = theta(i) + rand*2*pi;
+    vx(i) = vth/sqrt(2)*randn;
+    vy(i) =vth/sqrt(2)*randn;
+    v(i) = sqrt(vx(i).*vx(i) + vy(i).*vy(i));
+   
+end
+
+
+
+for t = 0 : deltaT : tTotal  
+    
+    for i=1:N
+        deltaPx(i)=vx(i)*deltaT+(1/2)*ax(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+        deltaPy(i)=vy(i)*deltaT+(1/2)*ay(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2
+    end
+    
+    for i=1:N
+        P = 1-exp(-deltaT/tmn);
+        if P > rand()
+            vx(i) = vth/sqrt(2)*randn;
+            vy(i) =vth/sqrt(2)*randn;
+            deltaPx(i)=vx(i)*deltaT+(1/2)*ax(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+            deltaPy(i)=vy(i)*deltaT+(1/2)*ay(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+        end
+    end
+    
+    
+    for i=1:N
+        if yPos(i)+deltaPy(i)>W||yPos(i)+deltaPy(i)<0
+            vy(i)=-vy(i);
+            deltaPy(i)=vy(i)*deltaT+(1/2)*ay(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+        end
+        if xPos(i)>0.4*L && xPos(i)<0.6*L
+            if yPos(i)+deltaPy(i)<0.4*W||yPos(i)+deltaPy(i)>0.6*W
+                vy(i)=-vy(i);
+                deltaPy(i)=vy(i)*deltaT+(1/2)*ay(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+            end
+        end
+        if yPos(i)<0.4*W||yPos(i)>0.6*W
+            if xPos(i)+deltaPx(i)>0.4*L && xPos(i)+deltaPx(i)<0.6*L
+                vx(i)=-vx(i);
+                deltaPx(i)=vx(i)*deltaT+(1/2)*ax(floor(yPos(i)*10^9),floor(xPos(i)*10^9))*deltaT^2;
+            end
+        end
+        
+    end
+      
+    
+    xPos=xPos+deltaPx;
+    yPos=yPos+deltaPy;
+      
+    %Periodic boundary condition in x direction
+    Ix=xPos>L;
+    xPos(Ix)=xPos(Ix)-L;
+    Ix=xPos<0;
+    xPos(Ix)=xPos(Ix)+L;
+    
+    %Part3 question a:2-D plot of particle trajectories
+    figure(3);
+    plot(xPos,yPos,'.');
+    hold on;
+    xlim([0 L]);
+    ylim([0 W]);
+    
+    %block definition
+    line([0.8*10^-7 0.8*10^-7],[W 0.6*W]);
+    line([1.2*10^-7 1.2*10^-7],[W 0.6*W]);
+    line([0.8*10^-7 0.8*10^-7],[0 0.4*W]);
+    line([1.2*10^-7 1.2*10^-7],[0 0.4*W]);
+    line([0.8*10^-7 1.2*10^-7],[0.6*W 0.6*W]);
+    line([0.8*10^-7 1.2*10^-7],[0.4*W 0.4*W]);
+
+    pause(0.01)
+    
+    for i =1:N
+        vx(i)=vx(i)+ax(floor(yPos(i)*10^9)+1,floor(xPos(i)*10^9)+1)*deltaT;
+        vy(i)=vy(i)+ay(floor(yPos(i)*10^9)+1,floor(xPos(i)*10^9)+1)*deltaT;
+    end
+end
